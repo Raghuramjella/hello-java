@@ -1,10 +1,6 @@
 pipeline {
     agent any
 
-    environment {
-        IMAGE = 'ruby:3.1'
-    }
-
     stages {
 
         stage('Checkout Code') {
@@ -13,57 +9,35 @@ pipeline {
             }
         }
 
-        stage('Setup Environment') {
-            steps {
-                script {
-                    docker.image(IMAGE).inside {
-                        sh '''
-                            apt-get update
-                            apt-get install -y openjdk-17-jdk build-essential
-                            gem install --no-document fpm
-                        '''
-                    }
-                }
-            }
-        }
-
         stage('Compile Java') {
             steps {
-                script {
-                    docker.image(IMAGE).inside {
-                        sh '''
-                            rm -rf build
-                            mkdir build
-                            javac -d build src/Hello.java
-                            jar cfe hello.jar Hello -C build .
-                        '''
-                    }
-                }
+                bat '''
+                if exist build rmdir /s /q build
+                mkdir build
+                javac -d build src\\Hello.java
+                jar cfe hello.jar Hello -C build .
+                '''
             }
         }
 
         stage('Prepare Package Directory') {
             steps {
-                script {
-                    docker.image(IMAGE).inside {
-                        sh '''
-                            mkdir -p package/usr/local/bin
-                            cp hello.jar package/usr/local/bin/
-                        '''
-                    }
-                }
+                bat '''
+                if not exist package mkdir package
+                if not exist package\\usr mkdir package\\usr
+                if not exist package\\usr\\local mkdir package\\usr\\local
+                if not exist package\\usr\\local\\bin mkdir package\\usr\\local\\bin
+
+                copy hello.jar package\\usr\\local\\bin\\
+                '''
             }
         }
 
         stage('Build DEB using FPM') {
             steps {
-                script {
-                    docker.image(IMAGE).inside {
-                        sh '''
-                            fpm -s dir -t deb -n hello-java -v 1.0.${BUILD_NUMBER} --prefix=/ -C package
-                        '''
-                    }
-                }
+                bat '''
+                docker run --rm -v %cd%:/app -w /app ruby:3 bash -c "gem install fpm && fpm -s dir -t deb -n hello-java -v 1.0.%BUILD_NUMBER% --prefix=/ -C package ."
+                '''
             }
         }
     }
